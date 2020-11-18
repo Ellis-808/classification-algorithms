@@ -1,2 +1,2 @@
 # classification-algorithms
-Implementations of the Naïve-Bayes Classifier, Random Forest Classifier, and Basic Tree Classifier in python3.
+Implementations of the Naïve-Bayes Classifier, Random Forest Classifier, and Decision Tree Classifier in python3.
