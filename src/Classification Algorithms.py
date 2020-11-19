@@ -9,7 +9,7 @@
 # 
 # Source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
 
-# In[2]:
+# In[34]:
 
 
 import numpy as np
@@ -23,7 +23,7 @@ from sklearn.naive_bayes import GaussianNB
 
 # ### Preprocessing
 
-# In[17]:
+# In[35]:
 
 
 def train_test_split(df, test_size):
@@ -48,48 +48,75 @@ X_train, X_test, Y_train, Y_test = train_test_split(wine_data.copy(), 100)
 
 # ### Decision Tree Classifier
 
-# In[ ]:
+# In[36]:
 
 
-
+class DecisionTree:
+    def __init__(self):
+        pass
+    
+    def fit(self, X, Y):
+        pass
+    
+    def predict(self, X):
+        pass
 
 
 # ### Decision Tree Comparision
 
-# In[ ]:
+# In[37]:
 
 
-
+DecisionTreeA = DecisionTree()
+DecisionTreeB = DecisionTreeClassifier()
 
 
 # ### Random Forest Classifier
 
-# In[ ]:
+# In[38]:
 
 
-
+class RandomForest:
+    def __init__(self):
+        pass
+    
+    def fit(self, X, Y):
+        pass
+    
+    def predict(self, X):
+        pass
 
 
 # ### Random Forest Comparison
 
-# In[ ]:
+# In[39]:
 
 
-
+RandomForestA = DecisionTree()
+RandomForestB = RandomForestClassifier()
 
 
 # ### Naive Bayes Classifier
 
-# In[ ]:
+# In[40]:
 
 
-
+class NaiveBayes:
+    def __init__(self):
+        pass
+    
+    def fit(self, X, Y):
+        pass
+    
+    def predict(self, X):
+        pass
 
 
 # ### Naive Bayes Comparison
 
-# In[ ]:
+# In[41]:
 
 
-
+NaiveBayesA = NaiveBayes()
+NaiveBayesB = GaussianNB()
 
