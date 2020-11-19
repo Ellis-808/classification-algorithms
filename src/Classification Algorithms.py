@@ -23,11 +23,11 @@ from sklearn.naive_bayes import GaussianNB
 
 # ### Preprocessing
 
-# In[16]:
+# In[17]:
 
 
-def train_test_split(df, training_size):
-    testing_set = df.sample(training_size)
+def train_test_split(df, test_size):
+    testing_set = df.sample(test_size)
     df.drop(index=testing_set.index, inplace=True)
     df.reset_index(drop=True, inplace=True)
     
