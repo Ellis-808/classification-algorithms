@@ -92,7 +92,7 @@ class RandomForest:
 # In[39]:
 
 
-RandomForestA = DecisionTree()
+RandomForestA = RandomForest()
 RandomForestB = RandomForestClassifier()
 
 
