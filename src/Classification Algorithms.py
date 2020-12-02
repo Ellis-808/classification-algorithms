@@ -9,7 +9,7 @@
 # 
 # Source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
 
-# In[215]:
+# In[461]:
 
 
 import math
@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 # Used to compare our implementation's performance
+from sklearn import tree
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
@@ -25,7 +26,7 @@ from sklearn.metrics import accuracy_score
 
 # ### Preprocessing
 
-# In[216]:
+# In[462]:
 
 
 def train_test_split(df, test_size=0):
@@ -53,7 +54,7 @@ X_train, X_test, Y_train, Y_test = train_test_split(wine_data.copy())
 
 # ### Decision Tree Classifier
 
-# In[217]:
+# In[463]:
 
 
 def label_counts(data):
@@ -61,13 +62,10 @@ def label_counts(data):
         raise TypeError("parameter `data` must be a Pandas DataFrame")
 
     labels = data.quality.unique()
-    matches = {}
-    for label in labels:
-        matches[str(label)] = (data[(data['quality'] == label)])
-
     counts = {}
-    for match in matches:
-        counts[match] = matches[match].count()['quality']
+    for label in labels:
+        counts[str(label)] = len(data[data['quality'] == label].index)
+
     return counts
 
 def gini(data):
@@ -101,15 +99,15 @@ def split(data, feature, split_point):
     if not isinstance(split_point, float):
         raise TypeError("parameter `split_point` must be a floating point number")
 
-    true_branch = pd.DataFrame()
-    false_branch = pd.DataFrame()
+    true_branch = {}
+    false_branch = {}
     for value in data.iterrows():
         if value[1][feature] >= split_point:
-            true_branch = true_branch.append(value[1])
+            true_branch[value[0]] = value[1]
         else:
-            false_branch = false_branch.append(value[1])
+            false_branch[value[0]] = value[1]
 
-    return true_branch, false_branch
+    return pd.DataFrame.from_dict(true_branch, orient='index').reset_index(drop=True), pd.DataFrame.from_dict(false_branch, orient='index').reset_index(drop=True)
 
 
 class Node:
@@ -151,6 +149,18 @@ class Node:
         self.is_leaf = is_leaf
         if is_leaf:
             self.predictions = kwargs['predictions']
+            
+            counts = label_counts(self.predictions)
+            if len(counts) == 1:
+                self.label = self.predictions['quality'][0]
+            else:
+                most = 0
+                self.label = None
+                for label in counts:
+                    if counts[label] > most:
+                        most = counts[label]
+                        self.label = int(label)
+
         else:
             self.true_branch = kwargs['true_branch']
             self.false_branch = kwargs['false_branch']
@@ -158,9 +168,9 @@ class Node:
 
     def __repr__(self):
         if self.is_leaf:
-            return "Leaf Node\n\n" + self.predictions
+            return f"Leaf Node\n\n{self.predictions}\n"
         else:
-            return "Decision Node\n\nSplit Feature: " + self.split_point[0] +                    " at value " + self.split_point[1]
+            return f"Decision Node: Split at feature `{self.split_point[0]}` with value {self.split_point[1]}\n{self.true_branch}{self.false_branch}\n"
 
 
 class DecisionTree:
@@ -174,15 +184,20 @@ class DecisionTree:
         if not isinstance(Y, pd.DataFrame) and not isinstance(Y, pd.Series):
             raise TypeError("parameter `Y` must be a Pandas DataFrame or Pandas Series")
 
-        self.original_data = (X.copy(), Y.copy())
+        self.original_data = (X, Y)
 
-        # Re-merge quality row into dataset
-        column_count = X.shape[1]
-        X.insert(column_count, "quality", Y)
-        self.tree = self.__build_tree(X)
+        # Re-merge quality row into dataset (not-ideal, but necessary for this implementaion)
+        data = X.copy()
+        data.insert(len(data.columns), "quality", Y)
+        self.tree = self.__build_tree(data)
+
+        return
 
     def predict(self, X):
-        pass
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError("parameter `X` must be a Pandas DataFrame")
+
+        return [self.__classify(data[1], self.tree) for data in X.iterrows()]
 
     def __build_tree(self, data):
         split_point, gain = self.__best_split(data)
@@ -190,10 +205,10 @@ class DecisionTree:
         if gain == 0:
             return Node(True, predictions=data)
 
-        true_data, false_data = split(data, best_split_point[0], best_split_point[1])
+        true_data, false_data = split(data, split_point[0], split_point[1])
         true_branch = self.__build_tree(true_data)
         false_branch = self.__build_tree(false_data)
-        
+
         return Node(False, true_branch=true_branch, false_branch=false_branch, split_point=split_point)
 
     def __best_split(self, data):
@@ -205,6 +220,10 @@ class DecisionTree:
         current_uncertainty = gini(data)
 
         for feature in data:
+            # Dont split on quality (again, not-ideal)
+            if feature == 'quality':
+                continue
+
             values = data[feature].unique()
             for value in values:
                 true_branch, false_branch = split(data, feature, value)
@@ -215,26 +234,48 @@ class DecisionTree:
 
                 gain = info_gain(true_branch, false_branch, current_uncertainty)
                 if gain >= best_info_gain:
-                    best_gain = gain
+                    best_info_gain = gain
                     best_split_point = (feature, value)
 
         return best_split_point, best_info_gain
 
+    def __classify(self, data, node):
+        if not isinstance(data, pd.Series):
+            raise TypeError("parameter `data` must be a Pandas Series")
+        if not isinstance(node, Node):
+            raise TypeError("parameter `node` must be a Node")
 
-# In[ ]:
+        if node.is_leaf:
+            return node.label
 
+        feature, value = node.split_point
+        if data[feature] >= value:
+            return self.__classify(data, node.true_branch)
+        else:
+            return self.__classify(data, node.false_branch)
 
-
+    def __repr__(self):
+        if self.tree != None:
+            return f"{self.tree}"
+        else:
+            return "Tree has not been trained"
 
 
 # ### Decision Tree Comparision
 
-# In[218]:
+# In[ ]:
 
 
 DecisionTreeA = DecisionTree()
 DecisionTreeA.fit(X_train, Y_train)
+print("Tree A\n\n", DecisionTreeA)
+predictionsA = DecisionTreeA.predict(X_test)
+print("Predictions A\n", predictionsA)
+
 DecisionTreeB = DecisionTreeClassifier()
+DecisionTreeB = DecisionTreeB.fit(X_train, Y_train)
+predictionsB = DecisionTreeB.predict(X_test)
+print("Predictions B\n", predictionsB)
 
 
 # ### Random Forest Classifier
@@ -264,7 +305,7 @@ RandomForestB = RandomForestClassifier()
 
 # ### Naive Bayes Classifier and Comparison
 
-# In[222]:
+# In[ ]:
 
 
 from random import randrange
