@@ -9,7 +9,7 @@
 # 
 # Source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
 
-# In[461]:
+# In[506]:
 
 
 import math
@@ -26,7 +26,7 @@ from sklearn.metrics import accuracy_score
 
 # ### Preprocessing
 
-# In[462]:
+# In[507]:
 
 
 def train_test_split(df, test_size=0):
@@ -54,7 +54,7 @@ X_train, X_test, Y_train, Y_test = train_test_split(wine_data.copy())
 
 # ### Decision Tree Classifier
 
-# In[463]:
+# In[508]:
 
 
 def label_counts(data):
@@ -152,7 +152,7 @@ class Node:
             
             counts = label_counts(self.predictions)
             if len(counts) == 1:
-                self.label = self.predictions['quality'][0]
+                self.label = int(self.predictions['quality'][0])
             else:
                 most = 0
                 self.label = None
@@ -198,6 +198,36 @@ class DecisionTree:
             raise TypeError("parameter `X` must be a Pandas DataFrame")
 
         return [self.__classify(data[1], self.tree) for data in X.iterrows()]
+
+    def score(self, Y, **kwargs):
+        if not isinstance(Y, list) and not isinstance(Y, pd.Series):
+            raise TypeError("parameter `Y` must be a Pandas Series or a list")
+
+        # Get predictions, either by calling predict or if passed as argument
+        predictions = None
+        if 'X' in kwargs:
+            if not isinstance(kwargs['X'], pd.DataFrame):
+                raise TypeError("parameter `X` must be a Pandas DataFrame")
+            predictions = self.predict(X)
+
+        elif 'predictions' in kwargs:
+            if not isinstance(kwargs['predictions'], list) and not isinstance(kwargs['predictions'], pd.Series):
+                raise TypeError("parameter `predictions` must be a Pandas Series or a list")
+            predictions = kwargs['predictions']
+
+        if isinstance(Y, pd.Series):
+            Y = Y.to_list()
+        if isinstance(predictions, pd.Series):
+            predictions = predictions.tolist()
+        if len(Y) != len(predictions):
+            raise IndexError("parameter `Y` and predictions must have the same shape");
+
+        correct = 0.0
+        total = len(Y)
+        for i in range(total):
+            if Y[i] == predictions[i]:
+                correct += 1
+        return correct / total
 
     def __build_tree(self, data):
         split_point, gain = self.__best_split(data)
@@ -263,24 +293,31 @@ class DecisionTree:
 
 # ### Decision Tree Comparision
 
-# In[ ]:
+# In[509]:
 
 
+# Ellis implementation
 DecisionTreeA = DecisionTree()
 DecisionTreeA.fit(X_train, Y_train)
-print("Tree A\n\n", DecisionTreeA)
 predictionsA = DecisionTreeA.predict(X_test)
-print("Predictions A\n", predictionsA)
+accuracyA = round(DecisionTreeA.score(Y_test, predictions=predictionsA) * 100, 2)
 
+# Scikit-Learn implementation
 DecisionTreeB = DecisionTreeClassifier()
 DecisionTreeB = DecisionTreeB.fit(X_train, Y_train)
 predictionsB = DecisionTreeB.predict(X_test)
+accuracyB = round(DecisionTreeB.score(X_test, Y_test) * 100, 2)
+
+print("Decision Tree (Ellis implementation)\n\n", DecisionTreeA)
+print("Predictions A\n", predictionsA)
 print("Predictions B\n", predictionsB)
+print("Accuracy (Ellis implementation):", accuracyA, "%")
+print("Accuracy (Skikit-Learn implementation):", accuracyB, "%")
 
 
 # ### Random Forest Classifier
 
-# In[ ]:
+# In[510]:
 
 
 class RandomForest:
@@ -296,7 +333,7 @@ class RandomForest:
 
 # ### Random Forest Comparison
 
-# In[ ]:
+# In[511]:
 
 
 RandomForestA = RandomForest()
@@ -305,7 +342,7 @@ RandomForestB = RandomForestClassifier()
 
 # ### Naive Bayes Classifier and Comparison
 
-# In[ ]:
+# In[512]:
 
 
 from random import randrange
