@@ -7,14 +7,21 @@
 # In this notebook we will implement our own version of the Decision Tree Classifier, Random Forest Classifer, and Naive Bayes Classifier then compare their performance against SciKit-Learn's implementations.
 # For these algorithms, the Red Wine Quality dataset provided by Kaggle will be used.
 # 
-# Source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
+# Note-1: The algorithms are not well optimized due to the fact that Jupyter notebooks do not support the multiprocessing module. While there is a workaround, it was mentioned that having multiple python modules is not recommended for this project. Cython would also help with performance, but requires an additional dependancy, again not recommended for this project.
+# 
+# Note-2: Decision Tree training time is ~10 minutes. Random Forest training time is ~N_trees * 10 minutes
+# 
+# 
+# Data source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
 
-# In[506]:
+# In[1]:
 
 
-import math
 import numpy as np
 import pandas as pd
+
+from random import randrange
+from math import sqrt, exp, pi, floor
 
 # Used to compare our implementation's performance
 from sklearn import tree
@@ -26,12 +33,12 @@ from sklearn.metrics import accuracy_score
 
 # ### Preprocessing
 
-# In[507]:
+# In[2]:
 
 
 def train_test_split(df, test_size=0):
     if test_size == 0:
-        test_size = math.floor( len(df.index) * 0.3 )
+        test_size = floor( len(df.index) * 0.3 )
 
     testing_set = df.sample(test_size)
     df.drop(index=testing_set.index, inplace=True)
@@ -54,7 +61,7 @@ X_train, X_test, Y_train, Y_test = train_test_split(wine_data.copy())
 
 # ### Decision Tree Classifier
 
-# In[508]:
+# In[3]:
 
 
 def label_counts(data):
@@ -144,7 +151,7 @@ class Node:
             if not isinstance(kwargs['split_point'][0], str):
                 raise TypeError("parameter `split_point[0]` must be a String ([feature], value)")
             if not isinstance(kwargs['split_point'][1], float):
-                raise TypeError("parameter `split_point[1]` must be a tuple (feature, [value])")
+                raise TypeError("parameter `split_point[1]` must be a float (feature, [value])")
 
         self.is_leaf = is_leaf
         if is_leaf:
@@ -208,7 +215,7 @@ class DecisionTree:
         if 'X' in kwargs:
             if not isinstance(kwargs['X'], pd.DataFrame):
                 raise TypeError("parameter `X` must be a Pandas DataFrame")
-            predictions = self.predict(X)
+            predictions = self.predict(kwargs['X'])
 
         elif 'predictions' in kwargs:
             if not isinstance(kwargs['predictions'], list) and not isinstance(kwargs['predictions'], pd.Series):
@@ -288,67 +295,162 @@ class DecisionTree:
         if self.tree != None:
             return f"{self.tree}"
         else:
-            return "Tree has not been trained"
+            return "Decision Tree has not been trained"
 
 
 # ### Decision Tree Comparision
 
-# In[509]:
+# In[5]:
 
 
 # Ellis implementation
 DecisionTreeA = DecisionTree()
 DecisionTreeA.fit(X_train, Y_train)
-predictionsA = DecisionTreeA.predict(X_test)
-accuracyA = round(DecisionTreeA.score(Y_test, predictions=predictionsA) * 100, 2)
+DT_predictionsA = DecisionTreeA.predict(X_test)
+DT_accuracyA = round(DecisionTreeA.score(Y_test, predictions=DT_predictionsA) * 100, 2)
 
 # Scikit-Learn implementation
 DecisionTreeB = DecisionTreeClassifier()
 DecisionTreeB = DecisionTreeB.fit(X_train, Y_train)
-predictionsB = DecisionTreeB.predict(X_test)
-accuracyB = round(DecisionTreeB.score(X_test, Y_test) * 100, 2)
+DT_predictionsB = DecisionTreeB.predict(X_test)
+DT_accuracyB = round(DecisionTreeB.score(X_test, Y_test) * 100, 2)
 
-print("Decision Tree (Ellis implementation)\n\n", DecisionTreeA)
-print("Predictions A\n", predictionsA)
-print("Predictions B\n", predictionsB)
-print("Accuracy (Ellis implementation):", accuracyA, "%")
-print("Accuracy (Skikit-Learn implementation):", accuracyB, "%")
+# The first print function will print out each node (omitted)
+# Since the tree is not pruned, this will print a long output
+
+# print("Decision Tree (Ellis implementation)\n\n", DecisionTreeA)
+print("Predictions A\n", DT_predictionsA)
+print("Predictions B\n", DT_predictionsB)
+print("Accuracy (Ellis implementation):", DT_accuracyA, "%")
+print("Accuracy (Skikit-Learn implementation):", DT_accuracyB, "%")
 
 
 # ### Random Forest Classifier
 
-# In[510]:
+# In[13]:
 
 
 class RandomForest:
-    def __init__(self):
-        pass
-    
+    def __init__(self, n_trees=5):
+        if not isinstance(n_trees, int):
+            raise TypeError("parameter `n_trees` must be an integer")
+
+        self.n_trees = n_trees
+        self.trees = None
+        self.original_data = None
+
     def fit(self, X, Y):
-        pass
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError("parameter `X` must be a Pandas DataFrame")
+        if not isinstance(Y, pd.DataFrame) and not isinstance(Y, pd.Series):
+            raise TypeError("parameter `Y` must be a Pandas DataFrame or Pandas Series")
+
+        self.original_data = (X, Y)
+        self.trees = []
+        for i in range(self.n_trees):
+            tree = DecisionTree()
+            tree.fit(X, Y)
+            self.trees.append(tree)
+        return
     
     def predict(self, X):
-        pass
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError("parameter `X` must be a Pandas DataFrame")
+
+        tree_results = [tree.predict(X) for tree in self.trees]
+        predictions = [None] * len(X.index)
+        for i in range(len(X.index)):
+            result_counts = {}
+
+            for result in tree_results:
+                prediction = str(result[i])
+                if prediction not in result_counts:
+                    result_counts[prediction] = 0
+                result_counts[prediction] += 1
+
+            most = 0
+            for prediction in result_counts:
+                if result_counts[prediction] > most:
+                    most = result_counts[prediction]
+                    predictions[i] = int(prediction)
+
+        return predictions
+    
+    def score(self, Y, **kwargs):
+        if not isinstance(Y, list) and not isinstance(Y, pd.Series):
+            raise TypeError("parameter `Y` must be a Pandas Series or a list")
+
+        # Get predictions, either by calling predict or if passed as argument
+        predictions = None
+        if 'X' in kwargs:
+            if not isinstance(kwargs['X'], pd.DataFrame):
+                raise TypeError("parameter `X` must be a Pandas DataFrame")
+            predictions = self.predict(kwargs['X'])
+
+        elif 'predictions' in kwargs:
+            if not isinstance(kwargs['predictions'], list):
+                raise TypeError("parameter `predictions` must be a list")
+            predictions = kwargs['predictions']
+
+        if isinstance(Y, pd.Series):
+            Y = Y.to_list()
+        if len(Y) != len(predictions):
+            raise IndexError("parameter `Y` and predictions must have the same shape");
+
+        correct = 0.0
+        total = len(Y)
+        for i in range(total):
+            if Y[i] == predictions[i]:
+                correct += 1
+        return correct / total
+
+    def __repr__(self):
+        """
+        DO NOT PRINT RANDOM FOREST TREE! Consider this a warning.
+        """
+
+        if self.trees != None:
+            ret = ""
+            i = 1
+            for tree in self.trees:
+                ret += f"Decision Tree {i}\n{tree}"
+                i += 1
+            return ret
+        else:
+            return "Random Forest Tree has not been trained"
 
 
 # ### Random Forest Comparison
 
-# In[511]:
+# In[14]:
 
 
-RandomForestA = RandomForest()
-RandomForestB = RandomForestClassifier()
+# Ellis implementation
+RandomForestA = RandomForest(n_trees=5)
+RandomForestA.fit(X_train, Y_train)
+RF_predictionsA = RandomForestA.predict(X_test)
+RF_accuracyA = round(RandomForestA.score(Y_test, predictions = RF_predictionsA) * 100, 2)
+
+# Scikit-Learn implementation
+RandomForestB = RandomForestClassifier(n_estimators=5)
+RandomForestB.fit(X_train, Y_train)
+RF_predictionsB = RandomForestB.predict(X_test)
+RF_accuracyB = round(RandomForestB.score(X_test, Y_test) * 100, 2)
+
+# The first print function will print out each tree in the forest (omitted)
+# Since each tree is not pruned, this will print an especially long output
+
+#print("Random Forest (Ellis implementation)\n\n", RandomForestA)
+print("Predictions A\n", RF_predictionsA)
+print("Predictions B\n", RF_predictionsB)
+print("Accuracy (Ellis implementation):", RF_accuracyA)
+print("Accuracy (Scikit-Learn implementation)", RF_accuracyB)
 
 
 # ### Naive Bayes Classifier and Comparison
 
-# In[512]:
+# In[15]:
 
-
-from random import randrange
-from math import sqrt
-from math import exp
-from math import pi
 
 # Split a dataset into k folds
 def cross_validation_split(dataset, n_folds):
@@ -476,7 +578,7 @@ print('Naive Bayes (from scratch) Accuracy: %.3f%%' % (sum(scores)/float(len(sco
 
 # ### Naive Bayes Comparison
 
-# In[ ]:
+# In[16]:
 
 
 #NaiveBayesA = NaiveBayes()
