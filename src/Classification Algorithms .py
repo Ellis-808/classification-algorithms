@@ -7,16 +7,15 @@
 # In this notebook we will implement our own version of the Decision Tree Classifier, Random Forest Classifer, and Naive Bayes Classifier then compare their performance against SciKit-Learn's implementations.
 # For these algorithms, the Red Wine Quality dataset provided by Kaggle will be used.
 # 
-# Note-1: The algorithms are not well optimized due to the fact that Jupyter notebooks do not support the multiprocessing module. While there is a workaround, it was mentioned that having multiple python modules is not recommended for this project. Cython would also help with performance, but requires an additional dependancy, again not recommended for this project.
-# 
-# Note-2: Decision Tree training time is ~10 minutes. Random Forest training time is ~N_trees * 10 minutes
+# Note: The algorithms are not well optimized due to the fact that Jupyter notebooks do not support the multiprocessing module. While there is a workaround, it was mentioned that having multiple python modules is not recommended for this project. Cython would also help with performance, but requires additional dependencies, again not recommended for this project.
 # 
 # 
 # Data source: https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009
 
-# In[1]:
+# In[53]:
 
 
+import copy
 import numpy as np
 import pandas as pd
 
@@ -33,12 +32,22 @@ from sklearn.metrics import accuracy_score
 
 # ### Preprocessing
 
-# In[2]:
+# In[54]:
 
 
 def train_test_split(df, test_size=0):
-    if test_size == 0:
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("parameter `df` must be a Pandas DataFrame")
+    if not isinstance(test_size, float) and not isinstance(test_size, int):
+        raise TypeError("parameter `test_size` must be an integer or floating point number")
+
+    # if a negative is passed in for whatever reason, default to 30%
+    if test_size <= 0:
         test_size = floor( len(df.index) * 0.3 )
+    if test_size < 1.0:
+        test_size = floor( len(df.index) * test_size)
+    else:
+        test_size = floor(test_size)
 
     testing_set = df.sample(test_size)
     df.drop(index=testing_set.index, inplace=True)
@@ -61,7 +70,7 @@ X_train, X_test, Y_train, Y_test = train_test_split(wine_data.copy())
 
 # ### Decision Tree Classifier
 
-# In[3]:
+# In[55]:
 
 
 def label_counts(data):
@@ -166,7 +175,7 @@ class Node:
                 for label in counts:
                     if counts[label] > most:
                         most = counts[label]
-                        self.label = int(label)
+                        self.label = int(float(label))
 
         else:
             self.true_branch = kwargs['true_branch']
@@ -181,9 +190,20 @@ class Node:
 
 
 class DecisionTree:
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.tree = None
         self.original_data = None
+        self.features = None
+
+        if 'features' in kwargs:
+            if not isinstance(kwargs['features'], tuple) and not isinstance(kwargs['features'], list):
+                raise TypeError("parameter `features` must be a list or tuple of strings")
+
+            for feature in kwargs['features']:
+                if not isinstance(feature, str):
+                    raise TypeError(f"parameter `features` must be an iterable of strings. Invalid: {feature}")
+
+            self.features = kwargs['features']
 
     def fit(self, X, Y):
         if not isinstance(X, pd.DataFrame):
@@ -196,6 +216,13 @@ class DecisionTree:
         # Re-merge quality row into dataset (not-ideal, but necessary for this implementaion)
         data = X.copy()
         data.insert(len(data.columns), "quality", Y)
+        
+        # Check for specified features, if provided
+        if self.features != None:
+            for feature in self.features:
+                if feature not in data:
+                    raise KeyError(f"required feature `{feature}` is not provided in parameter `X`")
+
         self.tree = self.__build_tree(data)
 
         return
@@ -260,6 +287,8 @@ class DecisionTree:
             # Dont split on quality (again, not-ideal)
             if feature == 'quality':
                 continue
+            if self.features != None and feature not in self.features:
+                continue
 
             values = data[feature].unique()
             for value in values:
@@ -299,8 +328,9 @@ class DecisionTree:
 
 
 # ### Decision Tree Comparision
+# Training time is ~10 minutes. Code only runs on 1 processor core due to Python GIL.
 
-# In[5]:
+# In[56]:
 
 
 # Ellis implementation
@@ -327,17 +357,38 @@ print("Accuracy (Skikit-Learn implementation):", DT_accuracyB, "%")
 
 # ### Random Forest Classifier
 
-# In[13]:
+# In[57]:
 
 
 class RandomForest:
-    def __init__(self, n_trees=5):
-        if not isinstance(n_trees, int):
-            raise TypeError("parameter `n_trees` must be an integer")
-
-        self.n_trees = n_trees
+    def __init__(self, **kwargs):
         self.trees = None
         self.original_data = None
+        self.n_trees = 5
+        self.n_feature_splits = 5
+        self.splits = None
+
+        if 'n_trees' in kwargs:
+            if not isinstance(kwargs['n_trees'], int):
+                raise TypeError("parameter `n_trees` must be an integer")
+
+            self.n_trees = kwargs['n_trees']
+
+        if 'n_feature_splits' in kwargs:
+            if not isinstance(kwargs['n_feature_splits'], int):
+                raise TypeError("parameter `n_feature_splits` must be an integer")
+
+            if not kwargs['n_feature_splits'] >= 0:
+                raise TypeError("parameter `n_feature_splits` must be >= 0")
+
+            self.n_feature_splits = kwargs['n_feature_splits']
+
+        # For simplicity, have the same n_trees as n_feature_splits.
+        if self.n_trees != self.n_feature_splits and self.n_feature_splits != 0:
+            if self.n_trees < self.n_feature_splits:
+                self.n_feature_splits = self.n_trees
+            else:
+                self.n_trees = self.n_feature_splits
 
     def fit(self, X, Y):
         if not isinstance(X, pd.DataFrame):
@@ -347,10 +398,17 @@ class RandomForest:
 
         self.original_data = (X, Y)
         self.trees = []
+        self.__split_features(X)
+
         for i in range(self.n_trees):
-            tree = DecisionTree()
+            tree = None
+            if len(self.splits) != 0:
+                tree = DecisionTree(features=self.splits[i])
+            else:
+                tree = DecisionTree()
             tree.fit(X, Y)
             self.trees.append(tree)
+
         return
     
     def predict(self, X):
@@ -404,6 +462,35 @@ class RandomForest:
                 correct += 1
         return correct / total
 
+    def __split_features(self, X):
+        if self.n_feature_splits != 0:
+            n_per_column = len(X.columns) // self.n_feature_splits
+            splits = []
+            buffer = []
+            i = 0
+            for column in X:
+                if column == 'quality':
+                    continue
+                
+                if i != n_per_column:
+                    buffer.append(column)
+                else:
+                    splits.append(buffer)
+                    buffer = [column]
+                    i = 0
+                i += 1
+
+            # Last tree may have more features if not an even split
+            last_split = splits[-1] + buffer
+            splits[:-1].append(last_split)
+
+            # Sanity check
+            if len(splits) != self.n_feature_splits:
+                raise IndexError("error splitting features")
+            
+            self.splits = splits
+        return
+
     def __repr__(self):
         """
         DO NOT PRINT RANDOM FOREST TREE! Consider this a warning.
@@ -421,18 +508,19 @@ class RandomForest:
 
 
 # ### Random Forest Comparison
+# Training time is ~N_trees * 10 minutes. Code only runs on 1 processor core due to Python GIL.
 
-# In[14]:
+# In[62]:
 
 
 # Ellis implementation
-RandomForestA = RandomForest(n_trees=5)
+RandomForestA = RandomForest(n_trees=5, n_feature_splits=5)
 RandomForestA.fit(X_train, Y_train)
 RF_predictionsA = RandomForestA.predict(X_test)
 RF_accuracyA = round(RandomForestA.score(Y_test, predictions = RF_predictionsA) * 100, 2)
 
 # Scikit-Learn implementation
-RandomForestB = RandomForestClassifier(n_estimators=5)
+RandomForestB = RandomForestClassifier(n_estimators=5, max_features=2)
 RandomForestB.fit(X_train, Y_train)
 RF_predictionsB = RandomForestB.predict(X_test)
 RF_accuracyB = round(RandomForestB.score(X_test, Y_test) * 100, 2)
@@ -440,7 +528,8 @@ RF_accuracyB = round(RandomForestB.score(X_test, Y_test) * 100, 2)
 # The first print function will print out each tree in the forest (omitted)
 # Since each tree is not pruned, this will print an especially long output
 
-#print("Random Forest (Ellis implementation)\n\n", RandomForestA)
+# print("Random Forest (Ellis implementation)\n\n", RandomForestA)
+print("Feature splits for Random Forest (Ellis implementation):", RandomForestA.splits)
 print("Predictions A\n", RF_predictionsA)
 print("Predictions B\n", RF_predictionsB)
 print("Accuracy (Ellis implementation):", RF_accuracyA)
@@ -449,7 +538,7 @@ print("Accuracy (Scikit-Learn implementation)", RF_accuracyB)
 
 # ### Naive Bayes Classifier and Comparison
 
-# In[15]:
+# In[59]:
 
 
 # Split a dataset into k folds
@@ -563,9 +652,9 @@ def naive_bayes(train, test):
 	return(predictions)
 
 NaiveBayesB = GaussianNB()
-NaiveBayesB.fit(NB_X_train, NB_Y_train)
-NB_Y_pred = NaiveBayesB.predict(NB_X_test)
-print ("Scikit-learn GaussianNB Accuracy: {0:.3f}".format(accuracy_score(NB_Y_test, NB_Y_pred)))
+NaiveBayesB.fit(X_train, Y_train)
+Y_pred = NaiveBayesB.predict(X_test)
+print ("Scikit-learn GaussianNB Accuracy: {0:.3f}".format(accuracy_score(Y_test, Y_pred)))
 
 dataset = pd.read_csv("../data/winequality-red-no-header.csv")
 datalist = dataset.values.tolist()
@@ -574,18 +663,4 @@ n_folds = 5
 scores = evaluate_algorithm(datalist, naive_bayes, n_folds)
 print('Scores: %s' % scores)
 print('Naive Bayes (from scratch) Accuracy: %.3f%%' % (sum(scores)/float(len(scores))))
-
-
-# ### Naive Bayes Comparison
-
-# In[16]:
-
-
-#NaiveBayesA = NaiveBayes()
-NaiveBayesB = GaussianNB()
-
-model = GaussianNB()
-model.fit(X_train, Y_train)
-Y_pred = model.predict(X_test)
-print ("Scikit-learn GaussianNB accuracy: {0:.3f}".format(accuracy_score(Y_test, Y_pred)))
 
